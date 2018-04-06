@@ -10,7 +10,7 @@
 * get_tpl($name string) полчает шаблон из файла, возвращает true/false в зависисмости от того, найден шаблон иил нет
 * set_tpl($key,$var string) задает переменную для её замены
 * set_tpl_array($array array)  то-же самое что и предыдущее, только для массива переменных (массив элементов в виде - "ключ"=>"значение")
-* set_tpl_pages($all,$cur,$elem_page,$cat,$templ1,$templ2,$width=5,$arg=null) - отображает пагинацию
+* set_paginate($point,$all_pages,$current,$template,$url,$arguments = null, $width = 9) - отображает пагинацию в точке %point%
 * tpl_parse()- выполняет замену в шаблоне и формирует окончательный результат
 
 **Пример вызова**
