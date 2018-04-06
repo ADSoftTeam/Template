@@ -7,9 +7,10 @@
 	- в шаблон передаем переменные обрамленные в %% - set_tpl("%a%",5), set_tpl('%news%',$news); итд
 	- в самом шаблоне используем переменные:
 		- в сравнениях, циклах - как есть, то есть {|if|%a%|=|5| равно 5| не равно 5|}, {|if|%new['title']%|||%news['title']%|}
-		- вне сравнений, просто для подстановки - в обрамлении %%, то есть - %a%, %array[5]%, %a['name']% итд
+		- вне сравнений, просто для подстановки - в обрамлении %%, то есть - %a%, %array[5]%, %a['name']% и.т.д
+		- @ - для экранирования (прогоняет вывод через htmlspecialchars() - %@a%, %@sw['volume']% и.т.д
 	- в качестве имен переменных: буквы,цифры и знак подчеркивания: %flip%, %a14%, %count_pos%, %имя%
-	- цикл только первого уровня - вложенные уиклы не поддерживаются
+	- цикл только первого уровня - вложенные циклы не поддерживаются
 */
 
 
@@ -56,7 +57,7 @@ class template {
 		$this->vars = $array["vars"];
 		$this->recursive_plan = $array["plan"];
 		$this->template = $array["template"];
-		$this->id = $arrat["id"];		
+		$this->id = $array["id"];		
 	}
 	
 	/**
@@ -172,18 +173,7 @@ class template {
 		}
 		return "";		
 	}
-
-	private function replace_arg($arg,$str) {
-		if (!is_null($arg)) {
-			foreach ($arg as $a) {							
-				$replace_tmp = str_replace($a['var'], $a['value'], $str); 
-			}
-		} else {
-			$replace_tmp = $str;
-		}
-		return $replace_tmp;
-	}
-	
+		
 	/**
 		Метод рекурсивного обхода текста в поисках вложенных операторов в фигурных скобках {}
 		param $strin - string (text) входной текст
