@@ -1,0 +1,1 @@
+{|if|%min%|>|1|<a href="%url_start%">1</a> <<||}{|foreach|%pages%|{|if|%pages['current']%|1|<b>%pages['number']%</b>| <a href="%url%">%pages['number']%</a> |}|}{|if|%max%|<|%all_pages%|>><a href="%url_end%">%all_pages%</a>||}

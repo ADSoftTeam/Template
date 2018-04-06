@@ -28,6 +28,38 @@ class template {
 	}
 	
 	/**
+		Возвращает все текущие переменные класса в одном массиве
+		param  $clear - (boolean) очищает текущие параметры
+		return mix array
+	*/
+	private function store($clear) {
+		$out = array(
+			"vars" 		=> $this->vars,
+			"template" 	=> $this->template,
+			"plan"		=> $this->recursive_plan,
+			"id"		=> $this->id
+		);
+		if ($clear) {
+			$this->vars = array();
+			$this->recursive_plan = array();
+			$this->template = "";
+			$this->id = 0;
+		}
+		return $out;
+	}
+	
+	/**
+		Устанавливает все текущие переменные класса из массива
+		param $aray - mix array
+	*/
+	private function restore($array) {
+		$this->vars = $array["vars"];
+		$this->recursive_plan = $array["plan"];
+		$this->template = $array["template"];
+		$this->id = $arrat["id"];		
+	}
+	
+	/**
 		Внутренний метод для получения значения из переданной строки
 		param $string  	- string, входная строка
 		param $perfix 	- char(1), символы обрамляющие переменную использовать какие, по умолчанию %
@@ -337,87 +369,53 @@ class template {
 		param $all_pages 	- (int) всего страниц
 		param $current		- (int) текущая страница
 		param $template		- (string) шаблон отображения страниц
+		param $url 			- передаем как должна выглядеть ссылка (для смещения используется переменная %offset%
 		param $width		- (int) количество отображаемых страниц (ширина)
 		param $arguments	- (mix array) дополнительные параметры, которые могут использоваться в пагинации
 	*/
-	public function set_paginate($point,$all_pages,$current,$template,$width = 9,$arguments = null) {
-		
-	}
-	
-	public function set_tpl_pages($all,$cur,$elem_page,$cat,$templ1,$templ2,$width=5,$arg=null) {	
-		if(empty($templ1) || !file_exists($templ1)) {          	
-			return false;
-		} else {
-			$this->template ='';
-			$tmp ='';
-			$tmp = file_get_contents($templ1);
-			$tmp_cur = file_get_contents($templ2);
-			$n = 0;
-			$start = ($cur-ceil(($width-1)/2));
-			if ($start<1) {
-				$start=1;
-			}
-			$end = $start+$width;	
-			if ($end>$all) {
-				$end = $all;
-				$start = $all-$width;
-			}
-
-			if ($all<=$width) {
+	public function set_paginate($point,$all_pages,$current,$template,$url,$arguments = null, $width = 9) {
+		$recovery = $this->store(true);
+		$tmp = "";		
+		if (file_exists($template)) {
+			if ($all_pages<=$width) {
 				$start = 1;
-				$end = $all;
-			}				
-			
-			if ($start>1) {
-				$replace_tmp = $tmp;	
-				$off = 0;
-				$replace_tmp = str_replace('%offset%', $off, $replace_tmp);
-				$replace_tmp = str_replace('%cat%', $cat, $replace_tmp); 
-				$replace_tmp = str_replace('%page%', 1, $replace_tmp); 
-				$replace_tmp = $this->replace_arg($arg,$replace_tmp);
-				
-				$this->template .=  $replace_tmp."...";
-				$replace_tmp = $tmp;	
-				$off = ($cur-2)*$elem_page;
-				$replace_tmp = str_replace('%offset%', $off, $replace_tmp);
-				$replace_tmp = str_replace('%cat%', $cat, $replace_tmp); 
-				$replace_tmp = str_replace('%page%', '<<', $replace_tmp);
-				$replace_tmp = $this->replace_arg($arg,$replace_tmp);
-				$this->template .=  $replace_tmp."...";
-			}
-			for ($i=$start;$i<=$end;$i++) {
-				if ($i == $cur) { 
-					$replace_tmp = $tmp_cur;	
-					$replace_tmp = str_replace('%page%', $i, $replace_tmp); 
-				} else {
-					$replace_tmp = $tmp;	
-					$off = ($i-1)*$elem_page;
-					$replace_tmp = str_replace('%offset%', $off, $replace_tmp);
-					$replace_tmp = str_replace('%cat%', $cat, $replace_tmp); 
-					$replace_tmp = str_replace('%page%', $i, $replace_tmp);
-					$replace_tmp = $this->replace_arg($arg,$replace_tmp);								
+				$end = $all_pages;
+			} else {
+				$start = ($current-ceil(($width-1)/2));
+				if ($start<1) {
+					$start = 1;
 				}
-				$this->template .=  $replace_tmp;
-			}	
-			if ($start+$width<$all) {
-				$replace_tmp = $tmp;	
-				$off = ($cur)*$elem_page;
-				$replace_tmp = str_replace('%offset%', $off, $replace_tmp);
-				$replace_tmp = str_replace('%cat%', $cat, $replace_tmp); 
-				$replace_tmp = str_replace('%page%', '>>', $replace_tmp);
-				$replace_tmp = $this->replace_arg($arg,$replace_tmp);						
-				$this->template .=  "...".$replace_tmp;
-				$replace_tmp = $tmp;	
-				$off = ($all-1)*$elem_page;
-				$replace_tmp = str_replace('%offset%', $off, $replace_tmp);
-				$replace_tmp = str_replace('%cat%', $cat, $replace_tmp); 
-				$replace_tmp = str_replace('%page%', $all, $replace_tmp);
-				$replace_tmp = $this->replace_arg($arg,$replace_tmp);						
-				$this->template .=  "...".$replace_tmp;                   
+				$end = $start+$width;	
+				if ($end>$all_pages) {
+					$end = $all_pages;
+					$start = $all_pages-$width;
+				}
 			}
-			return true;
+			
+			$pages = array();
+			for ($i=$start;$i<=$end;$i++) {
+				$pages[] = array("number"=>$i,"current"=> ($i==$current) ? 1 : 0);
+			}
+			// Замена для читабельности
+			$url_start = str_replace("%offset%", 1, $url);
+			$url_end = str_replace("%offset%", $all_pages, $url);
+			$url = str_replace("%offset%", "%pages['number']%", $url); 
+			//
+			$this->get_tpl($template);
+			$this->set_tpl_array($arguments);
+			$this->set_tpl('%url%',$url);
+			$this->set_tpl('%url_start%',$url_start);
+			$this->set_tpl('%url_end%',$url_end);
+			$this->set_tpl('%pages%',$pages);			
+			$this->set_tpl('%max%',$end);
+			$this->set_tpl('%min%',$start);
+			$this->set_tpl('%all_pages%',$all_pages);
+			$this->tpl_parse();
+			$tmp = $this->template;			
 		}
-    }
+		$this->restore($recovery);
+		$this->template = str_replace($point, $tmp, $this->template);
+	}
 
     public function tpl_parse() {
 		$e = $this->recursiveSplit($this->template);
