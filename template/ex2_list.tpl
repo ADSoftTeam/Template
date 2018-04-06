@@ -1,0 +1,1 @@
+<li>%name% - %var2%</li>
