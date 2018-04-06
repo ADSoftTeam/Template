@@ -17,15 +17,15 @@
 
 ```php
 <?php
-	// подключение необходимых классов
-	include_once("./../classes/template.class.php");	
-	$parse = new template;
-  $parse->get_tpl("./../template/ex1.tpl");	
-	$parse->set_tpl('%var1%','One');
-	$parse->set_tpl('%var2%','Two');
-  $parse->set_tpl('%arr%',array("name'=>"Ivan","age"=>24));
-	$parse->tpl_parse();
-	echo $parse->template;
+// подключение необходимых классов
+include_once("./../classes/template.class.php");	
+$parse = new template;
+$parse->get_tpl("./../template/ex1.tpl");	
+$parse->set_tpl('%var1%','One');
+$parse->set_tpl('%var2%','Two');
+$parse->set_tpl('%arr%',array("name'=>"Ivan","age"=>24));
+$parse->tpl_parse();
+echo $parse->template;
 ```
 
 **Синтаксис**
