@@ -19,13 +19,15 @@ class template {
     public $template;
 	private $recursive_plan;
 	private $id;
+	private $debug;
 	
-	function __construct() {
+	function __construct($debug = false) {
 		// обнуляем все при создании
 		$this->vars = array();
 		$this->recursive_plan = array();
 		$this->template = "";
 		$this->id = 0;
+		$this->debug = $debug;
 	}
 	
 	/**
@@ -307,7 +309,7 @@ class template {
 				break 1;
 		
 				default: 
-					return "Нет выражения удволетворяющго данному правилу [$expression]";
+					return $expression;//"Нет выражения удволетворяющго данному правилу [$expression]";
 				break 1;
 			}
 		} else {
@@ -387,21 +389,27 @@ class template {
 				$pages[] = array("number"=>$i,"current"=> ($i==$current) ? 1 : 0);
 			}
 			// Замена для читабельности
-			$url_start = str_replace("%offset%", 1, $url);
 			$url_end = str_replace("%offset%", $all_pages, $url);
+			$url_start = str_replace("%offset%", 1, $url);
+			
+			foreach($arguments as $find=>$value) {
+				$url_end = str_replace($find, $value, $url_end);
+				$url_start = str_replace($find, $value, $url_start);
+			}
 			$url = str_replace("%offset%", "%pages['number']%", $url); 
 			//
 			$this->get_tpl($template);
 			$this->set_tpl_array($arguments);
 			$this->set_tpl('%url%',$url);
-			$this->set_tpl('%url_start%',$url_start);
 			$this->set_tpl('%url_end%',$url_end);
+			$this->set_tpl('%url_start%',$url_start);			
 			$this->set_tpl('%pages%',$pages);			
 			$this->set_tpl('%max%',$end);
 			$this->set_tpl('%min%',$start);
 			$this->set_tpl('%all_pages%',$all_pages);
-			$this->tpl_parse();
-			$tmp = $this->template;			
+			$this->tpl_parse();			
+			$tmp = $this->template;	
+			
 		}
 		$this->restore($recovery);
 		$this->template = str_replace($point, $tmp, $this->template);
@@ -460,10 +468,9 @@ class template {
 				}				
 			}
 			$e[$index_arr]['expression'] = $foreach_temp;
-		}
-		
+		}		
 		// обработка всех вложенных и нет, условий и других операторов		
-		while ($i<COUNT($e)) {		
+		while ($i<COUNT($e)) {				
 			// Учитываем, что для foreach элементов вычислено все уже
 			$eval = ($e[$i]['foreach']!=1) ? $this->checkExpression($e[$i]["expression"]) : $e[$i]["expression"];// 
 			if ($e[$i]['parent']!=0) {
@@ -488,7 +495,7 @@ class template {
 		// ищем оставшиеся переменные в глобальном шаблоне
 		$pattern_var = "#(%\@*[a-zA-Zа-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
 		preg_match_all($pattern_var, $this->template, $matches);
-		// Пробегаемся по ним, заменяя их значением
+		// Пробегаемся по ним, заменяя их значением		
 		foreach($matches[1] as $find) {			
 			$this->template = str_replace($find, $this->get_value($find), $this->template);
 		}		
