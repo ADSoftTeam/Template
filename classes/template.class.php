@@ -341,7 +341,7 @@ class template {
     public function set_tpl($key,$var) {
 		$this->vars[$key] = $var;
 	}
-	
+
 	/**
 		Метод добавляет элементы передаваемого массива в массив переменных шаблонизатора
 		Если массивы имеют одинаковые строковые ключи, тогда каждое последующее значение будет 
@@ -353,6 +353,30 @@ class template {
 		if (is_array($array)) {			
 			$this->vars = (empty($this->vars)) ? $array : array_merge($this->vars,$array);
 		}
+	}
+	
+	/**
+		Публичный метод для вывода в цикле кусков шаблона 
+		(привет от set_tpl_list и отсутсвия поддержки вложеных foreach ) 
+		param $point		- (string) имя переменной, которая будет заменена в глобальном шаблоне 
+		param $array 		- (mix array) массив для перебора
+		param $field		- (string) Переменная для обозначения в под-шаблоне
+		param $template		- (string) под-шаблон отображения в цикле
+		param $arguments	- (mix array) дополнительные параметры, которые могут использоваться 
+	*/
+	public function set_tpl_lists($point,$array,$field,$template, $arguments = null) {
+		$recovery = $this->store(true);
+		$tmp = "";		
+		if (file_exists($template)) {			
+			$this->get_tpl($template);
+			$this->set_tpl_array($arguments);
+			$this->set_tpl($field,$array);
+			$this->tpl_parse();			
+			$tmp = $this->template;	
+			
+		}
+		$this->restore($recovery);
+		$this->template = str_replace($point, $tmp, $this->template);
 	}
 	
 	/**

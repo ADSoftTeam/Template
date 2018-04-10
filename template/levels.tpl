@@ -1,0 +1,1 @@
+{|foreach|%users%|<p>%users['name']%{|if|%users['level']%|%select%|selected!||}</p>|}
