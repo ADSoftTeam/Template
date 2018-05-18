@@ -9,6 +9,8 @@
 		- в сравнениях, циклах - как есть, то есть {|if|%a%|=|5| равно 5| не равно 5|}, {|if|%new['title']%|||%news['title']%|}
 		- вне сравнений, просто для подстановки - в обрамлении %%, то есть - %a%, %array[5]%, %a['name']% и.т.д
 		- @ - для экранирования (прогоняет вывод через htmlspecialchars() - %@a%, %@sw['volume']% и.т.д
+		- @@ - для экранирования js (прогоняет вывод через json_encode - %@@a%, %@@sw['volume']% и.т.д
+		- !  - для экранирования значения заключенного в %%, в основном для foreach, синтаксис: %!arr['name']%, где значение arr['name'] = %переменная%
 	- в качестве имен переменных: буквы,цифры и знак подчеркивания: %flip%, %a14%, %count_pos%, %имя%
 	- цикл только первого уровня - вложенные циклы не поддерживаются
 */
@@ -74,36 +76,75 @@ class template {
 		- при данных проверках, если не найдено считаем за пустое значение
 		3. Иначе просто пустое значение - если это перменная всеже, или значение которое в $string		
 	*/
-	private function get_value($string,$data = null) {
+	private function get_value($string,$data = null, $add = false) {		
 		$perfixs = "%";		
 		$data = (empty($data)) ? $this->vars : $data;		
 		$patterns = array(
-			'#^'.$perfixs.'[a-zA-Z,а-яА-ЯёЁ,_,\-,\d,\@]+'.$perfixs.'$#',
-			'#'.$perfixs.'(\@*\w+)(\[\'\w+\']|\["\w+\"]|\[\d+\])'.$perfixs.'#'
+			'#^'.$perfixs.'[a-zA-Z,а-яА-ЯёЁ,_,\-,\d,\@,\!]+'.$perfixs.'$#',
+			'#'.$perfixs.'((\@|\!)*\w+)(\[\'\w+\']|\["\w+\"]|\[\d+\])'.$perfixs.'#'
 		);		
-		preg_match($patterns[0], $string, $matches);
+		preg_match($patterns[0], $string, $matches);		
 		// Это проверка - передана константа или переменная
-		$without = ((mb_substr($string,0,1)=="%" && mb_substr($string,-1,1)=="%")) ? false : true;
+		$without = (mb_substr($string,0,1)=="%" && mb_substr($string,-1,1)=="%") ? false : true;
 		if (COUNT($matches)==1 && $matches[0]==$string) {
-			// Это простая переменная			
-			$find =  ($string[1]=="@") ? str_replace('@','',$matches[0]) : $matches[0];// В данных всегда ищем с %%						
-			return array_key_exists($find,$data) ? (($string[1]=="@") ? htmlspecialchars($data[$find]) : $data[$find]) : ($without ? $string: "");
+			// Это простая переменная
+			$find = $matches[0];
+			$escape = $data[$find];			
+			//$without = true; // Для экранируемых - показываем ту же строку			
+			if (mb_substr($string,1,2)=="@@") {
+				$find =  str_replace('@@','',$matches[0]);
+				$escape = json_encode($data[$find],JSON_UNESCAPED_UNICODE);
+			} else {				
+				if (mb_substr($string,1,1)=="@") {
+					// В данных всегда ищем с %%					
+					$find =  str_replace('@','',$matches[0]); 
+					$escape = $prfx.htmlspecialchars($data[$find]);
+				}
+			}
+			return array_key_exists($find,$data) ? $escape : ($without ? $string: "");
 		} else {
 			// Это элемент массива
 			$matches = array();
-			preg_match($patterns[1], $string, $matches);
-			$find =  ($string[1]=="@") ? str_replace('@','',$matches[1]) : $matches[1];
-			if (COUNT($matches)==3 && array_key_exists("%$find%",$data) 
-				&& is_array($data["%$find%"])) {					
+			preg_match($patterns[1], $string, $matches);			
+			//
 			
+			$find = $matches[1];			
+			if (mb_substr($string,1,1)=="!") {				
+				$without = true;
+				$find = str_replace('!','',$matches[1]);				
+			} else {
+				if (mb_substr($string,1,2)=="@@") {
+					$find =  str_replace('@@','',$matches[1]);
+				} else {
+					if (mb_substr($string,1,1)=="@") {
+						$find =  str_replace('@','',$matches[1]);				
+					}
+				}
+			}
+			if (COUNT($matches)==4 && array_key_exists("%$find%",$data) && is_array($data["%$find%"])) {				
 				// Удволетворяет нашему паттерну, есть такой массив переданный в шаблон и он действительно массив
-				$index = mb_substr($matches[2],1,mb_strlen($matches[2])-2);
+				$index = mb_substr($matches[3],1,mb_strlen($matches[3])-2);
 				if ($index[0]=='"' || $index[0]=="'") {
 					$index = mb_substr($index,1,mb_strlen($index)-2);
-				}
+				}				
 				// Если нет с таким индексом - то отдаем пустоту
-				return (array_key_exists($index,$data["%$find%"])) ? 
-					(($string[1]=="@") ? htmlspecialchars($data["%$find%"][$index]) : $data["%$find%"][$index]) : "";
+				$escape = $data["%$find%"][$index];				
+				if ($matches[2]=="!" ) {					
+					if ($add) {
+						$escape = $escape[0]."!".mb_substr($escape,1,mb_strlen($escape)-1);
+					} else {
+						$escape = 'dddd';
+					}
+				}
+				if (mb_substr($string,1,2)=="@@") {
+					$escape = json_encode($escape,JSON_UNESCAPED_UNICODE);
+				} else {
+					if (mb_substr($string,1,1)=="@") {
+						$escape = htmlspecialchars($escape);
+					}
+				}
+				
+				return (array_key_exists($index,$data["%$find%"])) ? $escape : "";
 			} else {
 				// Иначе получается нет такой переменной или она не массив
 				// возвращаем пустоту				
@@ -453,7 +494,7 @@ class template {
 			// Тут надо извлечь только тело цикла
 			$v = $this->extract_body_foreach($element['expression']);			
 			// Для всех элементов полученого массива прогоняем цикл
-			if (!empty($v['body']) && is_array($v['array'])) {
+			if (!empty($v['body']) && is_array($v['array'])) {				
 				$foreach_temp = "";
 				foreach ($v['array'] AS $item) {					
 					$temp = $v['body'];					
@@ -482,11 +523,11 @@ class template {
 						$j++;
 					}					
 					// ищем оставшиеся переменные в шаблоне
-					$pattern_var = "#(%\@*[a-zA-Zа-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+					$pattern_var = "#(%(\@|\!)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
 					preg_match_all($pattern_var, $temp, $matches);					
 					// Пробегаемся по ним, заменяя их значением
 					foreach($matches[1] as $find) {						
-						$temp = str_replace($find, $this->get_value($find,$n_data), $temp);
+						$temp = str_replace($find, $this->get_value($find,$n_data,true), $temp);
 					}
 					$foreach_temp .= $temp;
 				}				
@@ -517,11 +558,16 @@ class template {
 			$i++;
 		}		
 		// ищем оставшиеся переменные в глобальном шаблоне
-		$pattern_var = "#(%\@*[a-zA-Zа-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
-		preg_match_all($pattern_var, $this->template, $matches);
+		$pattern_var = "#(%(\@|\!)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+		preg_match_all($pattern_var, $this->template, $matches);		
 		// Пробегаемся по ним, заменяя их значением		
-		foreach($matches[1] as $find) {			
-			$this->template = str_replace($find, $this->get_value($find), $this->template);
+		foreach($matches[1] as $find) {
+			if (mb_substr($find,1,1)=="!") {
+				$v = str_replace("!","",$find);				
+				$this->template = str_replace($find,$v,$this->template);
+			} else {
+				$this->template = str_replace($find, $this->get_value($find), $this->template);
+			}
 		}		
 	}
 }
