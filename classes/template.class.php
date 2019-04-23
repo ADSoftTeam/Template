@@ -13,6 +13,7 @@
 		- !  - для экранирования значения заключенного в %%, в основном для foreach, синтаксис: %!arr['name']%, где значение arr['name'] = %переменная%
 	- в качестве имен переменных: буквы,цифры и знак подчеркивания: %flip%, %a14%, %count_pos%, %имя%
 	- цикл только первого уровня - вложенные циклы не поддерживаются
+	- добавлена поддержка включения подшаблонов - @include(/path/to/tpl)@
 */
 
 
@@ -65,6 +66,44 @@ class template {
 	}
 	
 	/**
+		Заменяет все @include(/path/to/tpl)@ на их содержимое
+	*/
+	private function include_tpl($template) {
+		$pattern = '/(@include\(([\S,\d]+)\)@)/';
+		$result = $template;
+		preg_match_all($pattern, $result, $matches);
+		if (!empty($matches[2])) {
+			$i = 0;
+			foreach ($matches[2] AS $tpl) {	
+				//
+				// ищем оставшиеся переменные в глобальном шаблоне
+				$pattern_var = "#(%(\@|\!)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+				preg_match_all($pattern_var, $tpl, $matches2);
+				
+				// Пробегаемся по строке пути, заменяя если есть что заменять на значения
+				foreach($matches2[1] as $find) {
+					if (mb_substr($find,1,1)=="!") {
+						$v = str_replace("!","",$find);				
+						$tpl = str_replace($find,$v,$tpl);
+					} else {
+						$tpl = str_replace($find, $this->get_value($find), $tpl);
+					}
+				}
+			
+				if (file_exists(".".$tpl)) {       
+					$temp = file_get_contents(".$tpl");
+					$temp = $this->include_tpl($temp);
+					$result = str_replace($matches[0][$i],$temp,$result);
+				} else {
+					$result = str_replace($matches[0][$i],"Ошибка чтения шаблона $tpl",$result);
+				}
+				$i++;
+			}
+		}
+		return $result;
+	}
+	
+	/**
 		Внутренний метод для получения значения из переданной строки
 		param $string  	- string, входная строка
 		param $perfix 	- char(1), символы обрамляющие переменную использовать какие, по умолчанию %
@@ -93,7 +132,7 @@ class template {
 			//$without = true; // Для экранируемых - показываем ту же строку			
 			if (mb_substr($string,1,2)=="@@") {
 				$find =  str_replace('@@','',$matches[0]);
-				$escape = json_encode($data[$find],JSON_UNESCAPED_UNICODE);
+				$escape = json_encode($data[$find],JSON_UNESCAPED_UNICODE || JSON_HEX_QUOT); // special for php 5.3
 			} else {				
 				if (mb_substr($string,1,1)=="@") {
 					// В данных всегда ищем с %%					
@@ -131,13 +170,13 @@ class template {
 				$escape = $data["%$find%"][$index];				
 				if ($matches[2]=="!" ) {					
 					if ($add) {
-						$escape = $escape[0]."!".mb_substr($escape,1,mb_strlen($escape)-1);
+						$escape = (mb_substr($escape,0,1)=="%") ? mb_substr($escape,0,1)."!".mb_substr($escape,1,mb_strlen($escape)-1) : $escape;
 					} else {
-						$escape = 'dddd';
+						$escape = '';
 					}
 				}
 				if (mb_substr($string,1,2)=="@@") {
-					$escape = json_encode($escape,JSON_UNESCAPED_UNICODE);
+					$escape = json_encode($escape,JSON_UNESCAPED_UNICODE || JSON_HEX_QUOT);
 				} else {
 					if (mb_substr($string,1,1)=="@") {
 						$escape = htmlspecialchars($escape);
@@ -375,6 +414,20 @@ class template {
 	}
 	
 	/**
+		Метод получает строку шаблона, и заносит его в template
+		param $str - string  строка с шаблоном
+		return boolean - успешно или нет
+	*/
+    public function set_template_string($str) {
+		if (!empty($str)) {
+			$this->template = $str;			
+			return true;
+        } else {
+			return false;
+		}		
+	}
+	
+	/**
 		Метод заносит в список переменных очередную переменную $var  с ключем $key
 		param $key - string ключ переменной (передаем с %имя%)
 		param $var - mixed значение переменной 
@@ -481,6 +534,7 @@ class template {
 	}
 
     public function tpl_parse() {
+		$this->template = $this->include_tpl($this->template);
 		$e = $this->recursiveSplit($this->template);
 		$i = 0;
 		// сначала обрабатываем все foreach
@@ -568,6 +622,10 @@ class template {
 			} else {
 				$this->template = str_replace($find, $this->get_value($find), $this->template);
 			}
-		}		
+		}
+		// При дебаге отдаем как есть без очистки от перевода строк
+		if (!$this->debug) {
+			$this->template = str_replace(array("\r\n", "\r", "\n", "\t"), '', $this->template);
+		}
 	}
 }
