@@ -1,5 +1,5 @@
 <?php
-// Шаблонизатор Template, версия 2.0
+// Шаблонизатор Template, версия 2.1
 // AD Soft, Денисов Андрей
 // https://github.com/ADSoftTeam/Template
 
@@ -11,9 +11,14 @@
 		- @ - для экранирования (прогоняет вывод через htmlspecialchars() - %@a%, %@sw['volume']% и.т.д
 		- @@ - для экранирования js (прогоняет вывод через json_encode - %@@a%, %@@sw['volume']% и.т.д
 		- !  - для экранирования значения заключенного в %%, в основном для foreach, синтаксис: %!arr['name']%, где значение arr['name'] = %переменная%
+		- #  - для сохранения форматирование строки, применяется функция nl2br, пример  %#message%
 	- в качестве имен переменных: буквы,цифры и знак подчеркивания: %flip%, %a14%, %count_pos%, %имя%
 	- цикл только первого уровня - вложенные циклы не поддерживаются
 	- добавлена поддержка включения подшаблонов - @include(/path/to/tpl)@
+	- в цикле foreach добавлена переменная с порядковым номером элемента - %array['foreach_position']%
+	- добавлена конструкция для вывода деревьев 
+	{|tree|<массив>|<начало оформление ветви>|<окончание оформления ветви>|<начало оформление листьев>|<окончание оформления листьев>|<строка-лист>|}
+	Пример: {|tree|%array%|<ul>|</ul>|<li>|</li>|<a href="%array['url']%">%array['title']%</a>|}
 */
 
 
@@ -23,14 +28,16 @@ class template {
 	private $recursive_plan;
 	private $id;
 	private $debug;
+	private $empty_var;
 	
-	function __construct($debug = false) {
+	function __construct($debug = true) {
 		// обнуляем все при создании
 		$this->vars = array();
 		$this->recursive_plan = array();
 		$this->template = "";
 		$this->id = 0;
 		$this->debug = $debug;
+		$this->empty_var = true;
 	}
 	
 	/**
@@ -63,6 +70,50 @@ class template {
 		$this->recursive_plan = $array["plan"];
 		$this->template = $array["template"];
 		$this->id = $array["id"];		
+	}
+	
+	/** Формирует новый массив, состоящий из всех элементов исходного, у которого ключ $key 
+		состоит в отношении $operator с значением $value
+		отоношения {"==","!=",">","<",">=","=<"}
+		Если задан и $out_key, то массив не целиком а только значения этих ключей
+	*/
+	private function fill_key_array($array,$key,$operator,$value,$out_key = "") {
+		$result = array();
+		foreach ($array as $a) {
+			switch ($operator) {
+				case "==": 
+					$logical = ($a["$key"]==$value);
+				break 1;
+				
+				case "!=": 
+					$logical = ($a["$key"]!=$value);
+				break 1;
+				
+				case ">": 
+					$logical = ($a["$key"]>$value);
+				break 1;
+				
+				case "<": 
+					$logical = ($a["$key"]<$value);
+				break 1;
+				
+				case ">=": 
+					$logical = ($a["$key"]>=$value);
+				break 1;
+				
+				case "=<": 
+					$logical = ($a["$key"]<=$value);
+				break 1;
+			}
+			if ($logical) {
+				if ($out_key=="") {
+					$result[] = $a;
+				} else {
+					$result[] = $a["$out_key"];
+				}
+			}
+		}
+	return $result;
 	}
 	
 	/**
@@ -119,8 +170,8 @@ class template {
 		$perfixs = "%";		
 		$data = (empty($data)) ? $this->vars : $data;		
 		$patterns = array(
-			'#^'.$perfixs.'[a-zA-Z,а-яА-ЯёЁ,_,\-,\d,\@,\!]+'.$perfixs.'$#',
-			'#'.$perfixs.'((\@|\!)*\w+)(\[\'\w+\']|\["\w+\"]|\[\d+\])'.$perfixs.'#'
+			'#^'.$perfixs.'[a-zA-Z,а-яА-ЯёЁ,_,\-,\d,\@,\!,\#]+'.$perfixs.'$#',
+			'#'.$perfixs.'((\@|\!|\#)*\w+)(\[\'\w+\']|\["\w+\"]|\[\d+\])'.$perfixs.'#'
 		);		
 		preg_match($patterns[0], $string, $matches);		
 		// Это проверка - передана константа или переменная
@@ -129,35 +180,51 @@ class template {
 			// Это простая переменная
 			$find = $matches[0];
 			$escape = $data[$find];			
-			//$without = true; // Для экранируемых - показываем ту же строку			
+			//$without = true; // Для экранируемых - показываем ту же строку
 			if (mb_substr($string,1,2)=="@@") {
 				$find =  str_replace('@@','',$matches[0]);
 				$escape = json_encode($data[$find],JSON_UNESCAPED_UNICODE || JSON_HEX_QUOT); // special for php 5.3
 			} else {				
-				if (mb_substr($string,1,1)=="@") {
-					// В данных всегда ищем с %%					
-					$find =  str_replace('@','',$matches[0]); 
-					$escape = $prfx.htmlspecialchars($data[$find]);
+				switch (mb_substr($string,1,1)) {
+					case "@": 
+						// В данных всегда ищем с %%
+						$find =  str_replace('@','',$matches[0]); 
+						$escape = $prfx.htmlspecialchars($data[$find]);
+					break 1;
+					
+					case "#": 						
+						$find =  str_replace('#','',$matches[0]);
+						$escape = $prfx.nl2br($data[$find]);
+					break 1;
 				}
 			}
-			return array_key_exists($find,$data) ? $escape : ($without ? $string: "");
+			$replace = ($this->empty_var) ? "" : $find;
+			return array_key_exists($find,$data) ? $escape : ($without ? $string: $replace);
 		} else {
 			// Это элемент массива
 			$matches = array();
 			preg_match($patterns[1], $string, $matches);			
 			//
-			
-			$find = $matches[1];			
-			if (mb_substr($string,1,1)=="!") {				
-				$without = true;
-				$find = str_replace('!','',$matches[1]);				
-			} else {
-				if (mb_substr($string,1,2)=="@@") {
-					$find =  str_replace('@@','',$matches[1]);
+			if (isset($matches[1])) {
+				$find = $matches[1];			
+				if (mb_substr($string,1,1)=="!") {				
+					$without = true;
+					$find = str_replace('!','',$matches[1]);				
 				} else {
-					if (mb_substr($string,1,1)=="@") {
-						$find =  str_replace('@','',$matches[1]);				
+					if (mb_substr($string,1,2)=="@@") {
+						$find =  str_replace('@@','',$matches[1]);
+					} else {					
+						switch (mb_substr($string,1,1)) {
+							case "@": 							
+								$find =  str_replace('@','',$matches[1]);
+							break 1;
+							
+							case "#": 
+								$find =  str_replace('#','',$matches[1]);
+							break 1;
+						}
 					}
+				
 				}
 			}
 			if (COUNT($matches)==4 && array_key_exists("%$find%",$data) && is_array($data["%$find%"])) {				
@@ -167,7 +234,8 @@ class template {
 					$index = mb_substr($index,1,mb_strlen($index)-2);
 				}				
 				// Если нет с таким индексом - то отдаем пустоту
-				$escape = $data["%$find%"][$index];				
+				$replace = ($this->empty_var) ? "" : $find;
+				$escape = isset($data["%$find%"][$index]) ? $data["%$find%"][$index] : $replace;
 				if ($matches[2]=="!" ) {					
 					if ($add) {
 						$escape = (mb_substr($escape,0,1)=="%") ? mb_substr($escape,0,1)."!".mb_substr($escape,1,mb_strlen($escape)-1) : $escape;
@@ -178,11 +246,17 @@ class template {
 				if (mb_substr($string,1,2)=="@@") {
 					$escape = json_encode($escape,JSON_UNESCAPED_UNICODE || JSON_HEX_QUOT);
 				} else {
-					if (mb_substr($string,1,1)=="@") {
-						$escape = htmlspecialchars($escape);
+					switch (mb_substr($string,1,1)) {
+						case "@": 
+							$escape = htmlspecialchars($escape);
+						break 1;
+						
+						case "#": 
+							$escape = nl2br($escape);
+						break 1;
 					}
 				}
-				
+				$replace = ($this->empty_var) ? "" : $escape;// TODO проверить
 				return (array_key_exists($index,$data["%$find%"])) ? $escape : "";
 			} else {
 				// Иначе получается нет такой переменной или она не массив
@@ -227,7 +301,7 @@ class template {
 				if ($index[0]=='"' || $index[0]=="'") {
 					$index = mb_substr($index,1,mb_strlen($index)-2);
 				}								
-				// Если нет с таким индексом - то отдаем пустоту
+				// Если нет с таким индексом - то отдаем пустоту				
 				return (array_key_exists($index,$data["%{$matches[1]}%"]) && is_array($data["%{$matches[1]}%"][$index])) ? $data["%{$matches[1]}%"][$index] : "";
 			} else {
 				// Иначе получается нет такой переменной или она не массив
@@ -248,14 +322,53 @@ class template {
 		$split = explode($separator,$string);
 		if (strtolower($split[1])=="foreach") {
 			$start = mb_stripos($string,$split[2]);
-			$length = mb_strlen($string);			
+			$length = mb_strlen($string);		
+		
+		// Добавляет в foreach порядковый номер тек элемента - в foreach_position
+		if (array_key_exists($split[2],$this->vars)) {
+			$array_position = range(1, COUNT($this->vars[$split[2]]));			
+			$this->vars[$split[2]] = array_map(function($key, $value) {
+				$value['foreach_position'] = $key+1;
+				return $value;
+			}, array_keys($this->vars[$split[2]]), $this->vars[$split[2]]);		
+		}
 			$array = $this->get_array($split[2]);
 			$body  = mb_substr($string,$start+mb_strlen($split[2])+1,$length-$start-mb_strlen($split[2])-3);
-			return array("array"=>$array,"body"=>$body,"array_index"=>$split[2]);
+			return array(
+				"array"			=> $array,
+				"body"			=> $body,
+				"array_index"	=> $split[2]
+			);
 		}
 		return "";		
 	}
-		
+
+	/**
+		Метод получает массив и параметры дерева для последующей обработки
+		param $string - (string) входная строка для foreach
+		return array(array,array_index,body)
+	*/
+	private function extract_body_tree($string) {
+		// {|tree|%array%|<ul>|</ul>|<li>|</li>|<a href="%array['url']%">%array['title']%</a>|}	
+		$separator = "|";
+		$split = explode($separator,$string);
+		if (strtolower($split[1])=="tree") {
+			$start = mb_stripos($string,$split[6]) + mb_strlen($split[6]) + 1;
+			$array = $this->get_array($split[2]);
+			$body  = mb_substr($string,$start,mb_strlen($string) - $start - 2);
+			return array(
+				"array"			=> $array,
+				"body"			=> $body,
+				"block_start"	=> $split[3],
+				"block_end"		=> $split[4],
+				"item_start"	=> $split[5],
+				"item_end"		=> $split[6],
+				"array_index"	=> $split[2]
+			);
+		}
+		return "";		
+	}
+	
 	/**
 		Метод рекурсивного обхода текста в поисках вложенных операторов в фигурных скобках {}
 		param $strin - string (text) входной текст
@@ -276,15 +389,18 @@ class template {
 					$this->id++;
 					// Для foreach дальше вглубь не идем - там отд
 					$operation = explode("|",$matches[1][$i]);
-					$foreach = ($operation[1]=="foreach") ? 1 : 0;						
+					$foreach = ($operation[1]=="foreach") ? 1 : 0;
+					$tree = ($operation[1]=="tree") ? 1 : 0;
 					//
 					$this->recursive_plan[] = array(
-						"layer"=>$layer,				// уровень вложенности
-						"etalon"=>$matches[0][$i],		// эталонное выражение
-						"expression"=>$matches[0][$i],  // вычисленное выражение
-						"id"=>$this->id,				// ид выражения
-						"foreach"=>$foreach,
-						"parent"=>$parent);				// ид "родителя" данного выражения - в какое выражение вложен						
+						"layer"			=> $layer,			// уровень вложенности
+						"etalon"		=> $matches[0][$i],	// эталонное выражение
+						"expression"	=> $matches[0][$i], // вычисленное выражение
+						"id"			=> $this->id,		// ид выражения
+						"foreach"		=> $foreach,		// это цикл
+						"tree"			=> $tree,			// это дерево
+						"parent"		=> $parent			// ид "родителя" данного выражения - в какое выражение вложен
+					);
 					if ($foreach==0) {
 						$this->recursiveSplit($matches[1][$i], $this->id, $layer + 1);
 					}						
@@ -397,6 +513,72 @@ class template {
 			return "Пустое выражение";
 		}
 	}
+	
+	/**
+		Метод получает массив, поле для связи, ид, ид родителя
+		param $list - array массив дерева
+		param $id - int с какого элемента начинать
+		param $link_field - string  - поле по которому идет связь родителей
+		param $parent - int ид родителя
+		return boolean - успешно или нет
+	*/
+	private function generate_tree($list, $id, $link_field = "sub_id", $params, $parents = 0) {
+		$mlist = $this->fill_key_array($list,$link_field,"==",$id);
+		$block = "";
+		if (COUNT($mlist)>0) {
+			$block .= $params['block_start'];
+			foreach ($mlist as $item) {
+				$id = $item["id"];				
+				if ($id != $parents) {
+					$block .= $params['item_start'];
+					
+					//
+					$temp = $params['body'];					
+					$new_tree = $this->recursiveSplit($temp);					
+					$j = 0;
+					$n_data = array_merge($this->vars,array("{$params['array_index']}"=>$item));
+					while ($j<COUNT($new_tree)) {		
+						$tree_eval = $this->checkExpression($new_tree[$j]["expression"],$n_data);						
+						if ($new_tree[$j]['parent']!=0) {
+							$parent = $new_tree[$j]['parent'];
+							// Тут ищем в массиве по значению ключа id - TODO попробовать потом другие самописные функции
+							$w = array_filter($new_tree, function($k) use ($parent) {				
+								return $k['id'] == $parent;
+							});
+							$key = array_keys($w);
+							$key = $key[0];				
+							// Этот элемент будет один			
+							// Делаем в родительском элементе - замену дочернего-вычисленного			
+							$new_tree[$key]['expression'] = str_replace($new_tree[$j]["etalon"],$tree_eval,$new_tree[$key]['expression']);
+						} else {
+							// В самом элементе заменяем вычисленное значение
+							$new_tree[$j]['expression'] = str_replace($new_tree[$j]["expression"],$tree_eval,$new_tree[$j]['expression']);
+							// И заменяем в самом шаблоне
+							$temp = str_replace($new_tree[$j]['etalon'], $tree_eval, $temp);
+						}
+						$j++;
+					}					
+					// ищем оставшиеся переменные в шаблоне
+					$pattern_var = "#(%(\@|\!|\#)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+					preg_match_all($pattern_var, $temp, $matches);					
+					// Пробегаемся по ним, заменяя их значением
+					foreach($matches[1] as $find) {						
+						$temp = str_replace($find, $this->get_value($find,$n_data,true), $temp);
+					}
+					
+					$block .= $temp;
+					
+					//
+					if ($t = $this->generate_tree($list, $id, $link_field, $params, $parents)){
+						$block .= $t;
+					}
+					$block .= $params['item_end'];
+				}
+			}
+			$block .= $params['block_end'];;
+		}
+		return $block;
+	}
 
 	/**
 		Метод получает имя файла шаблона, открывет и заносит его в template
@@ -407,8 +589,8 @@ class template {
 		if (empty($tpl_name) || !file_exists($tpl_name)) {          	
 			return false;
 		} else {
-			$this->template ='';
-			$this->template  = file_get_contents($tpl_name);			
+			//$this->__construct();
+			$this->template = file_get_contents($tpl_name);			
 			return true;
         }
 	}
@@ -420,6 +602,7 @@ class template {
 	*/
     public function set_template_string($str) {
 		if (!empty($str)) {
+			//$this->__construct();
 			$this->template = $str;			
 			return true;
         } else {
@@ -465,13 +648,13 @@ class template {
 			$this->get_tpl($template);
 			$this->set_tpl_array($arguments);
 			$this->set_tpl($field,$array);
-			$this->tpl_parse();			
+			$this->tpl_parse($this->empty_var);			
 			$tmp = $this->template;	
 			
 		}
 		$this->restore($recovery);
 		$this->template = str_replace($point, $tmp, $this->template);
-	}
+	}	
 	
 	/**
 		Публичный метод для показа "пагинатора"
@@ -525,7 +708,7 @@ class template {
 			$this->set_tpl('%max%',$end);
 			$this->set_tpl('%min%',$start);
 			$this->set_tpl('%all_pages%',$all_pages);
-			$this->tpl_parse();			
+			$this->tpl_parse($this->empty_var);			
 			$tmp = $this->template;	
 			
 		}
@@ -533,13 +716,15 @@ class template {
 		$this->template = str_replace($point, $tmp, $this->template);
 	}
 
-    public function tpl_parse() {
+	// $empty - boolean : true - заменять несуществующие переменные на пустоту, false - оставить как есть
+    public function tpl_parse($empty = true) {
+		$this->empty_var = $empty;
 		$this->template = $this->include_tpl($this->template);
 		$e = $this->recursiveSplit($this->template);
 		$i = 0;
 		// сначала обрабатываем все foreach
 		// Тут ищем в массиве по значению ключа foreach
-		$w = array_filter($e, function($k) use ($parent) {				
+		$w = array_filter($e, function($k) {				
 			return $k['foreach'] == 1;
 		});
 		$foreach_array = array_keys($w);
@@ -577,7 +762,7 @@ class template {
 						$j++;
 					}					
 					// ищем оставшиеся переменные в шаблоне
-					$pattern_var = "#(%(\@|\!)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+					$pattern_var = "#(%(\@|\!|\#)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
 					preg_match_all($pattern_var, $temp, $matches);					
 					// Пробегаемся по ним, заменяя их значением
 					foreach($matches[1] as $find) {						
@@ -587,11 +772,36 @@ class template {
 				}				
 			}
 			$e[$index_arr]['expression'] = $foreach_temp;
-		}		
+		}
+		// конец обработки foreach
+		
+		// теперь обрабатываем все tree
+		// Тут ищем в массиве по значению ключа tree
+		$w = array_filter($e, function($k) {				
+			return $k['tree'] == 1;
+		});
+		$tree_array = array_keys($w);
+		
+		// Для всех найденных деревьев
+		foreach ($tree_array AS $index_arr) {
+			$element = $e[$index_arr];
+			// Тут надо извлечь только тело цикла
+			$v = $this->extract_body_tree($element['expression']);
+			
+			// применяем для дерева рекурсивную функцию
+			// Для всех элементов полученого массива прогоняем цикл
+			if (!empty($v['body']) && is_array($v['array'])) {				
+				$tree_temp = "";
+				$tree_temp = $this->generate_tree($v['array'],0,'sub_id',$v);				
+			}
+			$e[$index_arr]['expression'] = $tree_temp;
+		}
+		// конец обработки дерева
+		
 		// обработка всех вложенных и нет, условий и других операторов		
 		while ($i<COUNT($e)) {				
 			// Учитываем, что для foreach элементов вычислено все уже
-			$eval = ($e[$i]['foreach']!=1) ? $this->checkExpression($e[$i]["expression"]) : $e[$i]["expression"];// 
+			$eval = (($e[$i]['foreach']!=1) && ($e[$i]['tree']!=1)) ? $this->checkExpression($e[$i]["expression"]) : $e[$i]["expression"];// 
 			if ($e[$i]['parent']!=0) {
 				$parent = $e[$i]['parent'];
 				// Тут ищем в массиве по значению ключа id - TODO попробовать потом другие самописные функции
@@ -612,7 +822,7 @@ class template {
 			$i++;
 		}		
 		// ищем оставшиеся переменные в глобальном шаблоне
-		$pattern_var = "#(%(\@|\!)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
+		$pattern_var = "#(%(\@|\!|\#)*[a-zA-Z,а-яА-ЯёЁ,\[,\],\',\",_,\-,\d]+%)#";
 		preg_match_all($pattern_var, $this->template, $matches);		
 		// Пробегаемся по ним, заменяя их значением		
 		foreach($matches[1] as $find) {
@@ -623,8 +833,11 @@ class template {
 				$this->template = str_replace($find, $this->get_value($find), $this->template);
 			}
 		}
-		// При дебаге отдаем как есть без очистки от перевода строк
-		if (!$this->debug) {
+		// При дебаге отдаем как есть без очистки от перевода строк		
+		if (!$this->debug) {			
+			// Удаляем все каменты js
+			$this->template = preg_replace('/(?:(?:\/\*(?:[^*]|(?:\*+[^*\/]))*\*+\/)|(?:(?<!\:)\/\/.*))/ms', '', $this->template);
+			// Все перводы строк, табуляции
 			$this->template = str_replace(array("\r\n", "\r", "\n", "\t"), '', $this->template);
 		}
 	}
