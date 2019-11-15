@@ -17,8 +17,8 @@
 	- добавлена поддержка включения подшаблонов - @include(/path/to/tpl)@
 	- в цикле foreach добавлена переменная с порядковым номером элемента - %array['foreach_position']%
 	- добавлена конструкция для вывода деревьев 
-	{|tree|<массив>|<начало оформление ветви>|<окончание оформления ветви>|<начало оформление листьев>|<окончание оформления листьев>|<строка-лист>|}
-	Пример: {|tree|%array%|<ul>|</ul>|<li>|</li>|<a href="%array['url']%">%array['title']%</a>|}
+	{|tree|<массив>|<поле для связи>|<начало оформление ветви>|<окончание оформления ветви>|<начало оформление листьев>|<окончание оформления листьев>|<строка-лист>|}
+	Пример: {|tree|%array%|sub_id|<ul>|</ul>|<li>|</li>|<a href="%array['url']%">%array['title']%</a>|}
 */
 
 
@@ -353,16 +353,17 @@ class template {
 		$separator = "|";
 		$split = explode($separator,$string);
 		if (strtolower($split[1])=="tree") {
-			$start = mb_stripos($string,$split[6]) + mb_strlen($split[6]) + 1;
+			$start = mb_stripos($string,$split[7]) + mb_strlen($split[7]) + 1;
 			$array = $this->get_array($split[2]);
 			$body  = mb_substr($string,$start,mb_strlen($string) - $start - 2);
 			return array(
-				"array"			=> $array,
+				"array"			=> $array,				
 				"body"			=> $body,
-				"block_start"	=> $split[3],
-				"block_end"		=> $split[4],
-				"item_start"	=> $split[5],
-				"item_end"		=> $split[6],
+				"field_link"	=> $split[3],
+				"block_start"	=> $split[4],
+				"block_end"		=> $split[5],
+				"item_start"	=> $split[6],
+				"item_end"		=> $split[7],
 				"array_index"	=> $split[2]
 			);
 		}
@@ -517,13 +518,13 @@ class template {
 	/**
 		Метод получает массив, поле для связи, ид, ид родителя
 		param $list - array массив дерева
-		param $id - int с какого элемента начинать
-		param $link_field - string  - поле по которому идет связь родителей
+		param $id - int с какого элемента начинать		
 		param $parent - int ид родителя
+		param $params - array массим параметров
 		return boolean - успешно или нет
 	*/
-	private function generate_tree($list, $id, $link_field = "sub_id", $params, $parents = 0) {
-		$mlist = $this->fill_key_array($list,$link_field,"==",$id);
+	private function generate_tree($list, $id, $params, $parents = 0) {
+		$mlist = $this->fill_key_array($list, $params['field_link'],"==",$id);
 		$block = "";
 		if (COUNT($mlist)>0) {
 			$block .= $params['block_start'];
@@ -569,7 +570,7 @@ class template {
 					$block .= $temp;
 					
 					//
-					if ($t = $this->generate_tree($list, $id, $link_field, $params, $parents)){
+					if ($t = $this->generate_tree($list, $id, $params, $parents)){
 						$block .= $t;
 					}
 					$block .= $params['item_end'];
@@ -787,12 +788,12 @@ class template {
 			$element = $e[$index_arr];
 			// Тут надо извлечь только тело цикла
 			$v = $this->extract_body_tree($element['expression']);
-			
+			//echo '<pre>';print_r($v);
 			// применяем для дерева рекурсивную функцию
 			// Для всех элементов полученого массива прогоняем цикл
 			if (!empty($v['body']) && is_array($v['array'])) {				
 				$tree_temp = "";
-				$tree_temp = $this->generate_tree($v['array'],0,'sub_id',$v);				
+				$tree_temp = $this->generate_tree($v['array'],0,$v);
 			}
 			$e[$index_arr]['expression'] = $tree_temp;
 		}
